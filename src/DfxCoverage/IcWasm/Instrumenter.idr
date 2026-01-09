@@ -65,10 +65,20 @@ instrumentWasm opts = do
     else pure $ Left $ "ic-wasm instrument failed with exit code " ++ show exitCode
 
 ||| Quick instrument with defaults
+||| Note: Uses default start page (0). Profiling data may be overwritten
+||| by canister stable memory writes. Caller should read profiling data
+||| immediately after each update call.
 export
 quickInstrument : String -> String -> IO (Either String ())
 quickInstrument input output =
-  instrumentWasm (defaultInstrumentOptions input output)
+  let opts = MkInstrumentOptions
+        { inputWasm = input
+        , outputWasm = output
+        , traceOnly = []
+        , startPage = Nothing     -- Use default (page 0)
+        , pageLimit = Nothing     -- No limit
+        }
+  in instrumentWasm opts
 
 -- =============================================================================
 -- WASM Info
