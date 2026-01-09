@@ -26,3 +26,4 @@ modules = DfxCoverage.CandidParser
         -- ic-wasm Integration
         , DfxCoverage.IcWasm.Instrumenter
         , DfxCoverage.IcWasm.ProfilingParser
+        , DfxCoverage.IcWasm.HttpOutcallDetector
