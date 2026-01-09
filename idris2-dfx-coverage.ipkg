@@ -23,3 +23,6 @@ modules = DfxCoverage.CandidParser
         -- Code-Level Coverage
         , DfxCoverage.CodeCoverage.CodeCoverageResult
         , DfxCoverage.CodeCoverage.CodeCoverageAnalyzer
+        -- ic-wasm Integration
+        , DfxCoverage.IcWasm.Instrumenter
+        , DfxCoverage.IcWasm.ProfilingParser
