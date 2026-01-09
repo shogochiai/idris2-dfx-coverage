@@ -130,6 +130,90 @@ Show CoverageStats where
             " (" ++ show cs.coveragePercent ++ "%)"
 
 -- =============================================================================
+-- Cycle Analysis
+-- =============================================================================
+
+||| Function cycle consumption entry
+public export
+record FuncCycleEntry where
+  constructor MkFuncCycleEntry
+  funcId : Nat
+  totalCycles : Integer
+  callCount : Nat
+
+public export
+Show FuncCycleEntry where
+  show e = "func[" ++ show e.funcId ++ "]: " ++ show e.totalCycles ++
+           " cycles (" ++ show e.callCount ++ " calls)"
+
+||| Cycle analysis result
+public export
+record CycleAnalysis where
+  constructor MkCycleAnalysis
+  totalCycles : Integer
+  funcCycles : List FuncCycleEntry
+  topConsumers : List FuncCycleEntry  -- Sorted by cycles, descending
+
+public export
+Show CycleAnalysis where
+  show ca = "Total: " ++ show ca.totalCycles ++ " cycles, " ++
+            show (length ca.funcCycles) ++ " functions"
+
+||| Helper: Update or insert function cycle entry
+updateFuncCycles : Nat -> Integer -> List FuncCycleEntry -> List FuncCycleEntry
+updateFuncCycles fid cyc [] = [MkFuncCycleEntry fid cyc 1]
+updateFuncCycles fid cyc (e :: es) =
+  if e.funcId == fid
+    then { totalCycles $= (+ cyc), callCount $= (+ 1) } e :: es
+    else e :: updateFuncCycles fid cyc es
+
+||| Helper: Aggregate cycles from entries
+aggregateCycles : List ProfilingEntry -> List FuncCycleEntry
+aggregateCycles [] = []
+aggregateCycles entries =
+  let positives = filter (\e => e.funcId > 0) entries
+  in foldl (\acc, e => updateFuncCycles (cast e.funcId) e.cycles acc) [] positives
+
+||| Helper: Sort by cycles descending (simple insertion sort for small lists)
+sortByCyclesDesc : List FuncCycleEntry -> List FuncCycleEntry
+sortByCyclesDesc [] = []
+sortByCyclesDesc (x :: xs) = insert x (sortByCyclesDesc xs)
+  where
+    insert : FuncCycleEntry -> List FuncCycleEntry -> List FuncCycleEntry
+    insert e [] = [e]
+    insert e (y :: ys) = if e.totalCycles >= y.totalCycles
+                           then e :: y :: ys
+                           else y :: insert e ys
+
+||| Analyze cycle consumption from profiling data
+export
+analyzeCycles : ProfilingResult -> CycleAnalysis
+analyzeCycles pr =
+  let funcEntries = aggregateCycles pr.entries in
+  let totalCyc = foldl (\acc, e => acc + e.totalCycles) 0 funcEntries in
+  let sorted = sortByCyclesDesc funcEntries in
+  let topList = take 10 sorted in
+  MkCycleAnalysis totalCyc funcEntries topList
+
+||| Calculate percentage of total cycles for a function
+export
+cyclePercent : Integer -> Integer -> Double
+cyclePercent funcCycles totalCycles =
+  if totalCycles == 0
+    then 0.0
+    else (cast funcCycles / cast totalCycles) * 100.0
+
+||| Format cycle count with K/M suffix
+export
+formatCycles : Integer -> String
+formatCycles n =
+  if n >= 1000000
+    then show (n `div` 1000000) ++ "." ++ show ((n `mod` 1000000) `div` 100000) ++ "M"
+    else if n >= 1000
+      then show (n `div` 1000) ++ "K"
+      else show n
+
+-- =============================================================================
 -- dfx Integration
 -- =============================================================================
 
