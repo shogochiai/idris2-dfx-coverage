@@ -5,7 +5,7 @@ brief = "ICP Canister coverage analysis for Idris2 CDK backend"
 
 sourcedir = "src"
 
-depends = base, contrib
+depends = base, contrib, idris2-coverage-core
 
 modules = DfxCoverage.CandidParser
         , DfxCoverage.CanisterCall
@@ -17,6 +17,7 @@ modules = DfxCoverage.CandidParser
         -- WASM Function Mapping
         , DfxCoverage.WasmMapper.WasmFunc
         , DfxCoverage.WasmMapper.NameSection
+        , DfxCoverage.WasmMapper.WasmBranchParser
         -- IC0 System API Mock
         , DfxCoverage.Ic0Mock.Ic0Stubs
         , DfxCoverage.Ic0Mock.MockContext
@@ -27,3 +28,5 @@ modules = DfxCoverage.CandidParser
         , DfxCoverage.IcWasm.Instrumenter
         , DfxCoverage.IcWasm.ProfilingParser
         , DfxCoverage.IcWasm.HttpOutcallDetector
+        -- Dumpcases Analysis
+        , DfxCoverage.DumpcasesParser

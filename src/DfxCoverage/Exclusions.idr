@@ -117,6 +117,39 @@ defaultExclusions =
     -- Version/metadata (often trivial)
   , exactPattern "getVersion" "Metadata method"
   , exactPattern "get_version" "Metadata method"
+
+    -- Emscripten/musl libc runtime (not application code)
+  , exactPattern "printf_core" "libc printf"
+  , exactPattern "fmt_fp" "libc float formatting"
+  , exactPattern "fmt_u" "libc unsigned formatting"
+  , exactPattern "fmt_o" "libc octal formatting"
+  , exactPattern "fmt_x" "libc hex formatting"
+  , prefixPattern "emscripten_builtin_" "Emscripten runtime"
+  , exactPattern "dispose_chunk" "malloc/free internals"
+  , exactPattern "dlmalloc" "malloc implementation"
+  , exactPattern "dlfree" "free implementation"
+  , exactPattern "dlrealloc" "realloc implementation"
+  , exactPattern "dlcalloc" "calloc implementation"
+  , containsPattern "malloc" "Memory allocator"
+  , containsPattern "free" "Memory deallocator"
+  , containsPattern "memcpy" "libc memcpy"
+  , containsPattern "memset" "libc memset"
+  , containsPattern "memmove" "libc memmove"
+  , containsPattern "strlen" "libc strlen"
+  , containsPattern "strcmp" "libc strcmp"
+  , containsPattern "strcpy" "libc strcpy"
+  , prefixPattern "wc" "Wide char functions"
+  , prefixPattern "vf" "vararg format functions"
+  , prefixPattern "vsn" "vararg snprintf"
+  , exactPattern "pad" "printf padding"
+  , exactPattern "getint" "printf int parsing"
+  , exactPattern "pop_arg" "printf arg handling"
+  , exactPattern "out" "printf output"
+
+    -- WASM runtime internals
+  , prefixPattern "stackSave" "WASM stack"
+  , prefixPattern "stackRestore" "WASM stack"
+  , prefixPattern "stackAlloc" "WASM stack"
   ]
 
 -- =============================================================================
