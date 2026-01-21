@@ -24,6 +24,8 @@ import System
 import public Coverage.Core.Types
 import public Coverage.Core.Exclusions
 import public Coverage.Core.Stats
+import public Coverage.Core.RuntimeHit
+import public Coverage.Core.HighImpact
 import public Coverage.Classification.CrashReason
 import public Coverage.Classification.BranchClass
 import public Coverage.Core.DumpcasesRunner
@@ -227,6 +229,33 @@ export
 getFunctionsWithMinBranches : Nat -> List FuncCases -> List FuncCases
 getFunctionsWithMinBranches minBranches funcs =
   sortByBranches $ filter (\f => f.totalBranches >= minBranches) funcs
+
+-- =============================================================================
+-- Conversion to Shared HighImpactTarget (from coverage-core)
+-- =============================================================================
+
+||| Convert FuncCases to HighImpactTarget
+||| This enables shared tooling between Chez Scheme and DFX/WASM coverage
+|||
+||| @fc Function case information from dumpcases
+||| @executed Number of branches executed (0 if unknown)
+export
+funcCasesToHighImpactTarget : FuncCases -> Nat -> HighImpactTarget
+funcCasesToHighImpactTarget fc executed =
+  mkUntestedTarget fc.funcName (getModuleName fc.funcName) fc.totalBranches executed
+
+||| Convert list of FuncCases to HighImpactTargets
+||| Assumes 0 executed branches (static analysis only)
+export
+funcCasesToHighImpactTargets : List FuncCases -> List HighImpactTarget
+funcCasesToHighImpactTargets = map (\fc => funcCasesToHighImpactTarget fc 0)
+
+||| Get top K high impact targets as shared HighImpactTarget type
+export
+getHighImpactTargets : Nat -> List FuncCases -> List HighImpactTarget
+getHighImpactTargets n funcs =
+  let sorted = getHighImpactByTypeBranches n funcs
+  in funcCasesToHighImpactTargets sorted
 
 -- =============================================================================
 -- Exclusion Filtering (using core types)
