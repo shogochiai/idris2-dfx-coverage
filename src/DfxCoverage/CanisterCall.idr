@@ -190,6 +190,26 @@ defaultDeployOptions = MkDeployOptions
   , forTestBuild = False
   }
 
+||| Find test module path by searching for **/Tests/AllTests.idr
+||| Returns relative path from project root (e.g., "src/Economics/Tests/AllTests.idr")
+export
+findTestModulePath : String -> IO (Maybe String)
+findTestModulePath projectDir = do
+  -- Use find command to search for Tests/AllTests.idr
+  let cmd = "find " ++ projectDir ++ "/src -name 'AllTests.idr' -path '*/Tests/*' 2>/dev/null | head -1"
+  (exitCode, stdout, _) <- executeCommand cmd
+  let result = trim stdout
+  if result == ""
+     then pure Nothing
+     else do
+       -- Convert absolute path to relative from project dir
+       let prefixLen = cast {to=Int} (length projectDir) + 1  -- +1 for trailing /
+       let resultLen = cast {to=Int} (length result)
+       let relative = if isPrefixOf projectDir result
+                         then strSubstr prefixLen (resultLen - prefixLen) result
+                         else result
+       pure (Just relative)
+
 ||| Check if local replica is running
 public export
 isReplicaRunning : DeployOptions -> IO Bool
@@ -272,9 +292,18 @@ ensureDeployed : DeployOptions -> IO (Either String String)
 ensureDeployed opts = do
   -- Step 1: Build WASM (always rebuild to avoid cache bugs)
   -- forTestBuild generates temp Main.idr in /tmp importing Tests.AllTests (atomic)
+  -- First, find test module if forTestBuild is enabled
+  testModPath <- if opts.forTestBuild
+                 then findTestModulePath opts.projectDir
+                 else pure Nothing
+  when opts.forTestBuild $ do
+    case testModPath of
+      Just p  => putStrLn $ "    Found test module: " ++ p
+      Nothing => putStrLn "    Warning: No Tests/AllTests.idr found, using default path"
   let buildOpts = { projectDir := opts.projectDir
                   , canisterName := opts.canisterName
-                  , forTestBuild := opts.forTestBuild } WB.defaultBuildOptions
+                  , forTestBuild := opts.forTestBuild
+                  , testModulePath := testModPath } WB.defaultBuildOptions
   when opts.forTestBuild $ putStrLn "    Building with test code (dynamically generated from Tests.AllTests)..."
   buildResult <- WB.buildCanisterAuto buildOpts
   case buildResult of
