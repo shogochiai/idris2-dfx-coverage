@@ -5,9 +5,10 @@ brief = "ICP Canister coverage analysis for Idris2 CDK backend"
 
 sourcedir = "src"
 
-depends = base, contrib, idris2-coverage-core
+depends = base, contrib, idris2-coverage-core, idris2-wasm
 
-modules = DfxCoverage.CandidParser
+modules = DfxCoverage.Idris2Coverage
+        , DfxCoverage.CandidParser
         , DfxCoverage.CanisterCall
         , DfxCoverage.CoverageAnalyzer
         , DfxCoverage.Exclusions
@@ -27,6 +28,7 @@ modules = DfxCoverage.CandidParser
         -- ic-wasm Integration
         , DfxCoverage.IcWasm.Instrumenter
         , DfxCoverage.IcWasm.ProfilingParser
+        , DfxCoverage.IcWasm.IcpPublicNameParser
         , DfxCoverage.IcWasm.HttpOutcallDetector
         -- Dumpcases Analysis
         , DfxCoverage.DumpcasesParser

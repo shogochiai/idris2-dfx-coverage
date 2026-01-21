@@ -8,13 +8,78 @@ This library provides tools for analyzing test coverage of ICP (Internet Compute
 
 ## Architecture
 
+### ICP Coverage Infrastructure
+
+```
+LazyDfx Step4 (Consumer)
+    └── idris2-dfx-coverage (Library API)
+          ├── DumpcasesParser ............... Static branch analysis
+          ├── ProfilingParser ............... Runtime function coverage
+          ├── CanisterCall .................. Candid method testing
+          ├── CoverageAnalyzer .............. Coverage gap detection
+          └── IcWasm.Instrumenter ........... WASM instrumentation
+                └── ic-wasm instrument adds:
+                      __get_profiling (query)
+                      __get_cycles (query)
+```
+
+### Coverage Types
+
+| Type | Tool | Output |
+|------|------|--------|
+| **Candid Method Coverage** | CanisterCall + CoverageAnalyzer | Methods tested via dfx call |
+| **Type-Level Branch Analysis** | DumpcasesParser | Static case tree analysis from `idris2 --dumpcases` |
+| **Runtime Function Coverage** | IcWasm.Instrumenter + ProfilingParser | Functions executed via `__get_profiling` |
+
+### Module Structure
+
 ```
 idris2-dfx-coverage
-├── CandidParser.idr       # Parse .did files to extract method signatures
-├── CanisterCall.idr       # Execute dfx canister call and parse results
-├── CoverageAnalyzer.idr   # Compare tested vs defined methods
-└── Exclusions.idr         # Exclusion patterns for methods
+├── CandidParser.idr              # Parse .did files
+├── CanisterCall.idr              # Execute dfx canister calls
+├── CoverageAnalyzer.idr          # Coverage gap analysis
+├── Exclusions.idr                # Exclusion patterns
+├── DumpcasesParser.idr           # Parse idris2 --dumpcases output
+├── Idris2Coverage.idr            # High-level coverage API
+├── IcWasm/
+│   ├── Instrumenter.idr          # ic-wasm instrument wrapper
+│   ├── ProfilingParser.idr       # Parse __get_profiling output
+│   ├── IcpPublicNameParser.idr   # Parse function name mapping
+│   └── HttpOutcallDetector.idr   # Detect HTTP outcall capability
+├── WasmMapper/
+│   ├── WasmFunc.idr              # WASM function mapping
+│   ├── NameSection.idr           # Name section parsing
+│   └── WasmBranchParser.idr      # WASM branch analysis
+├── CodeCoverage/
+│   ├── CodeCoverageResult.idr    # Coverage result types
+│   └── CodeCoverageAnalyzer.idr  # Code-level coverage
+└── Ic0Mock/
+    ├── Ic0Stubs.idr              # IC0 system API stubs
+    └── MockContext.idr           # Mock context for testing
 ```
+
+### HighImpactTarget (Shared Type)
+
+`HighImpactTarget` is a shared type from `idris2-coverage-core` that provides a unified representation for coverage gaps across backends.
+
+```idris
+-- From Coverage.Core.HighImpact
+record HighImpactTarget where
+  constructor MkHighImpactTarget
+  kind          : HighImpactKind   -- UntestedCanonical | BugUnhandledInput | UnknownCrash
+  funcName      : String
+  moduleName    : String
+  branchCount   : Nat
+  executedCount : Nat
+  severity      : Double           -- branchCount/executedCount ratio (Inf if 0)
+  note          : String
+
+-- Convert FuncCases from dumpcases to HighImpactTarget
+import DfxCoverage.DumpcasesParser
+targets <- getHighImpactTargets 10 funcCases  -- Top 10 targets
+```
+
+This enables cross-backend tooling (ICP, EVM, Chez) to share the same coverage analysis format.
 
 ## Modules
 

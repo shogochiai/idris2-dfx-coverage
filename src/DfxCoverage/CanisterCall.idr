@@ -12,6 +12,7 @@ import System.File
 import System.Clock
 
 import DfxCoverage.CandidParser
+import WasmBuilder.WasmBuilder as WB
 
 %default covering
 
@@ -151,6 +152,157 @@ testMethods opts methods = traverse (\m => callQuery opts m) methods
 public export
 testInterface : CallOptions -> CandidInterface -> IO (List CallRecord)
 testInterface opts ci = testMethods opts (getMethodNames ci)
+
+-- =============================================================================
+-- Canister Deployment
+-- =============================================================================
+
+||| Result of a deploy operation
+public export
+data DeployResult
+  = DeploySuccess String   -- Success with canister ID
+  | DeployError String     -- Deploy failed with error
+  | DeployAlreadyRunning   -- Canister already deployed
+
+public export
+Show DeployResult where
+  show (DeploySuccess cid) = "Deployed: " ++ cid
+  show (DeployError e) = "Deploy error: " ++ e
+  show DeployAlreadyRunning = "Already deployed"
+
+||| Options for deployment
+public export
+record DeployOptions where
+  constructor MkDeployOptions
+  canisterName : String
+  network : String
+  dfxPath : String
+  projectDir : String
+  forTestBuild : Bool      -- Build with src/Main_test.idr for coverage
+
+public export
+defaultDeployOptions : DeployOptions
+defaultDeployOptions = MkDeployOptions
+  { canisterName = ""
+  , network = "local"
+  , dfxPath = "dfx"
+  , projectDir = "."
+  , forTestBuild = False
+  }
+
+||| Check if local replica is running
+public export
+isReplicaRunning : DeployOptions -> IO Bool
+isReplicaRunning opts = do
+  let cmd = "cd " ++ opts.projectDir ++ " && " ++
+            opts.dfxPath ++ " ping " ++ opts.network ++ " 2>/dev/null"
+  exitCode <- system cmd
+  pure (exitCode == 0)
+
+||| Start local replica in background
+public export
+startReplica : DeployOptions -> IO (Either String ())
+startReplica opts = do
+  let cmd = "cd " ++ opts.projectDir ++ " && " ++
+            opts.dfxPath ++ " start --clean --background 2>&1"
+  (exitCode, stdout, stderr) <- executeCommand cmd
+  if exitCode == 0
+    then pure (Right ())
+    else pure (Left $ if null stderr then stdout else stderr)
+
+||| Stop local replica
+public export
+stopReplica : DeployOptions -> IO ()
+stopReplica opts = do
+  let cmd = "cd " ++ opts.projectDir ++ " && " ++ opts.dfxPath ++ " stop 2>/dev/null"
+  _ <- system cmd
+  pure ()
+
+||| Install WASM to canister directly (skips dfx build which validates .did)
+public export
+installWasm : DeployOptions -> String -> IO DeployResult
+installWasm opts wasmPath = do
+  -- Ensure canister exists (create if needed)
+  let createCmd = "cd " ++ opts.projectDir ++ " && " ++
+                  opts.dfxPath ++ " canister create " ++ opts.canisterName ++
+                  " --network " ++ opts.network ++ " 2>/dev/null || true"
+  _ <- system createCmd
+
+  -- Install WASM directly
+  let cmd = "cd " ++ opts.projectDir ++ " && " ++
+            opts.dfxPath ++ " canister install " ++ opts.canisterName ++
+            " --wasm " ++ wasmPath ++
+            " --mode reinstall -y" ++
+            " --network " ++ opts.network ++ " 2>&1"
+  putStrLn $ "    Deploying: " ++ opts.canisterName
+  (exitCode, stdout, stderr) <- executeCommand cmd
+  if exitCode == 0
+    then do
+      -- Get canister ID
+      let idCmd = "cd " ++ opts.projectDir ++ " && " ++
+                  opts.dfxPath ++ " canister id " ++ opts.canisterName ++
+                  " --network " ++ opts.network ++ " 2>/dev/null"
+      (_, canisterId, _) <- executeCommand idCmd
+      pure $ DeploySuccess (trim canisterId)
+    else pure $ DeployError (if null stderr then stdout else stderr)
+
+||| Deploy a canister (legacy - uses dfx deploy)
+public export
+deployCanister : DeployOptions -> IO DeployResult
+deployCanister opts = do
+  let cmd = "cd " ++ opts.projectDir ++ " && " ++
+            opts.dfxPath ++ " deploy " ++ opts.canisterName ++
+            " --network " ++ opts.network ++ " 2>&1"
+  (exitCode, stdout, stderr) <- executeCommand cmd
+  if exitCode == 0
+    then do
+      -- Get canister ID
+      let idCmd = "cd " ++ opts.projectDir ++ " && " ++
+                  opts.dfxPath ++ " canister id " ++ opts.canisterName ++
+                  " --network " ++ opts.network ++ " 2>/dev/null"
+      (_, canisterId, _) <- executeCommand idCmd
+      pure $ DeploySuccess (trim canisterId)
+    else pure $ DeployError (if null stderr then stdout else stderr)
+
+||| Ensure canister is deployed: build WASM, start replica, deploy
+||| Returns canister ID on success
+||| If forTestBuild is True, dynamically generates test Main from Tests.AllTests
+public export
+ensureDeployed : DeployOptions -> IO (Either String String)
+ensureDeployed opts = do
+  -- Step 1: Build WASM (always rebuild to avoid cache bugs)
+  -- forTestBuild generates temp Main.idr in /tmp importing Tests.AllTests (atomic)
+  let buildOpts = { projectDir := opts.projectDir
+                  , canisterName := opts.canisterName
+                  , forTestBuild := opts.forTestBuild } WB.defaultBuildOptions
+  when opts.forTestBuild $ putStrLn "    Building with test code (dynamically generated from Tests.AllTests)..."
+  buildResult <- WB.buildCanisterAuto buildOpts
+  case buildResult of
+    WB.BuildError err => pure (Left $ "WASM build failed: " ++ err)
+    WB.BuildSuccess wasmPath => do
+      putStrLn $ "    WASM built: " ++ wasmPath
+
+      -- Step 2: Start replica if needed (for local network)
+      when (opts.network == "local") $ do
+        running <- isReplicaRunning opts
+        unless running $ do
+          putStrLn "    Starting local replica..."
+          Right () <- startReplica opts
+            | Left err => pure ()  -- Will fail at deploy anyway
+          pure ()
+
+      -- Step 3: Install WASM directly (skips dfx build which validates .did)
+      result <- installWasm opts wasmPath
+      case result of
+        DeploySuccess cid => pure (Right cid)
+        DeployError err => pure (Left $ "Deploying: " ++ opts.canisterName ++ "\n" ++ err)
+        DeployAlreadyRunning => do
+          -- Get existing canister ID
+          let idCmd = "cd " ++ opts.projectDir ++ " && " ++
+                      opts.dfxPath ++ " canister id " ++ opts.canisterName ++
+                      " --network " ++ opts.network ++ " 2>/dev/null"
+          (_, canisterId, _) <- executeCommand idCmd
+          pure (Right (trim canisterId))
 
 -- =============================================================================
 -- Result Analysis

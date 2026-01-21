@@ -266,3 +266,54 @@ toWasmTraces pr = mapMaybe toTrace pr.entries
                "enter"           -- opcode : String
                0                 -- depth : Nat (not tracked in ic-wasm)
         else Nothing
+
+-- =============================================================================
+-- Named Coverage (with function name resolution)
+-- =============================================================================
+
+||| Coverage result with resolved function names
+public export
+record NamedCoverageStats where
+  constructor MkNamedCoverageStats
+  executedNames : List String      -- Names of executed functions
+  totalTargets : Nat               -- Number of target functions (from dumpcases/source map)
+  coveredCount : Nat               -- Number of covered target functions
+  coveragePercent : Double
+  uncoveredNames : List String     -- Names of uncovered functions
+
+public export
+Show NamedCoverageStats where
+  show ncs = show ncs.coveredCount ++ "/" ++ show ncs.totalTargets ++
+             " (" ++ show ncs.coveragePercent ++ "%)" ++
+             "\n  Uncovered: " ++ show ncs.uncoveredNames
+
+||| Normalize function name for comparison
+||| Converts Idris2 naming (Main.func.0) to WASM naming (Main_func_0)
+export
+normalizeFuncName : String -> String
+normalizeFuncName = pack . map normalize . unpack
+  where
+    normalize : Char -> Char
+    normalize '.' = '_'
+    normalize c = c
+
+||| Calculate coverage with named functions
+||| @executedIds     List of function IDs that were executed (from profiling)
+||| @funcIdToName    Mapping from func ID to name (from icp:public name)
+||| @targetNames     List of target function names (from dumpcases/source map)
+export
+calculateNamedCoverage : List Nat -> (Nat -> Maybe String) -> List String -> NamedCoverageStats
+calculateNamedCoverage executedIds lookupName targetNames =
+  let executedNamesRaw = mapMaybe lookupName (nub executedIds)
+      executedNormalized = map normalizeFuncName executedNamesRaw
+      targetNormalized = map normalizeFuncName targetNames
+      covered = filter (\t => elem t executedNormalized) targetNormalized
+      uncovered = filter (\t => not (elem t executedNormalized)) targetNormalized
+  in buildStats executedNamesRaw targetNormalized covered uncovered
+  where
+    buildStats : List String -> List String -> List String -> List String -> NamedCoverageStats
+    buildStats execNames targets cov uncov =
+      let targetCount = length targets
+          covCount = length cov
+          pct = if targetCount == 0 then 100.0 else (cast covCount / cast targetCount) * 100.0
+      in MkNamedCoverageStats execNames targetCount covCount pct uncov
