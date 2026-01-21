@@ -12,6 +12,7 @@ import System.File
 import System.Clock
 
 import DfxCoverage.CandidParser
+import DfxCoverage.IcWasm.Instrumenter as Instr
 import WasmBuilder.WasmBuilder as WB
 
 %default covering
@@ -311,7 +312,20 @@ ensureDeployed opts = do
     WB.BuildSuccess wasmPath => do
       putStrLn $ "    WASM built: " ++ wasmPath
 
-      -- Step 2: Start replica if needed (for local network)
+      -- Step 2: Instrument WASM with ic-wasm for profiling
+      let instrumentedPath = wasmPath ++ ".instrumented"
+      putStrLn "    Instrumenting WASM with ic-wasm..."
+      instrResult <- Instr.quickInstrument wasmPath instrumentedPath
+      deployWasm <- case instrResult of
+        Right () => do
+          putStrLn $ "    Instrumented: " ++ instrumentedPath
+          pure instrumentedPath
+        Left err => do
+          putStrLn $ "    Warning: ic-wasm instrument failed: " ++ err
+          putStrLn "    Deploying non-instrumented WASM (function coverage unavailable)"
+          pure wasmPath
+
+      -- Step 3: Start replica if needed (for local network)
       when (opts.network == "local") $ do
         running <- isReplicaRunning opts
         unless running $ do
@@ -320,8 +334,8 @@ ensureDeployed opts = do
             | Left err => pure ()  -- Will fail at deploy anyway
           pure ()
 
-      -- Step 3: Install WASM directly (skips dfx build which validates .did)
-      result <- installWasm opts wasmPath
+      -- Step 4: Install WASM directly (skips dfx build which validates .did)
+      result <- installWasm opts deployWasm
       case result of
         DeploySuccess cid => pure (Right cid)
         DeployError err => pure (Left $ "Deploying: " ++ opts.canisterName ++ "\n" ++ err)

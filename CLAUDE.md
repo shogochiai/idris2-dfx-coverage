@@ -95,16 +95,85 @@ cat idris2-c.map | jq -r '.names[]' | grep -E "^(Main\.|Prelude\.|PrimIO\.)"
 - `src/DfxCoverage/IcWasm/ProfilingParser.idr` - `__get_profiling`出力パーサー
 - `src/DfxCoverage/Idris2/DumpcasesParser.idr` - dumpcasesパーサー
 
+## wasm-objdump による関数インデックス取得（推奨）
+
+WASM debug infoから直接関数インデックス↔名前のマッピングを取得：
+
+```bash
+wasm-objdump -x build/xxx_stubbed.wasm | grep -E "^ - func\["
+```
+
+出力例：
+```
+ - func[11] sig=0 <Main_main>
+ - func[14] sig=0 <Main_dispatchCommand>
+ - func[203] sig=2 <canister_update_initialOUCState>
+```
+
+### Python でのパース
+
+```python
+import subprocess, re
+
+result = subprocess.run(['wasm-objdump', '-x', 'build/xxx.wasm'], capture_output=True, text=True)
+funcs = {}
+for line in result.stdout.split('\n'):
+    m = re.search(r'func\[(\d+)\].*<([^>]+)>', line)
+    if m:
+        idx, name = int(m.group(1)), m.group(2)
+        funcs[idx] = name
+
+# Idris関数のみフィルタ
+idris_funcs = {k: v for k, v in funcs.items() if not any(v.startswith(p) for p in
+    ['ic0_', '__wasi', '__wasm', 'csegen', '_brace', 'idris2_', 'canister_'])}
+```
+
+## High Impact Targets 特定
+
+未カバー＋重要な関数を静的解析で特定：
+
+```python
+high_impact_patterns = ['donate', 'reward', 'transfer', 'submit', 'register', 'execute', 'owner', 'admin']
+for idx, name in idris_funcs.items():
+    for pattern in high_impact_patterns:
+        if pattern in name.lower():
+            print(f"⚠️ [{idx}] {name} [{pattern}]")
+```
+
+### FunctionCoverage.idr
+
+`src/DfxCoverage/FunctionCoverage.idr` が以下を提供：
+- `parseWasmFunctions` - wasm-objdumpで関数一覧取得
+- `calculateCoverage` - プロファイリングデータとの突合
+- `findHighImpactTargets` - 未カバー重要関数特定
+
+## Stable Memory Layout for Profiling
+
+```
+┌─────────────────────────────────────────┐
+│ Pages 0-9:  Canister data (stable vars) │
+│ Pages 10-25: ic-wasm profiling traces   │
+└─────────────────────────────────────────┘
+```
+
+ic-wasm instrument時に `--start-page 10 --page-limit 16` を指定。
+canister_initで `ic0_stable64_grow(26)` で事前確保（idris2-wasmが自動生成）。
+
 ## Limitations
 
-1. **WASM関数ID↔Idris関数名の直接マッピングなし**
-   - Emscriptenがfunction namesを保持しない
-   - Source Mapの行番号マッピングから間接的に推測
+1. **Entry Mode の制限**
+   - `__toggle_entry`はエクスポート関数のentry/exitのみ記録
+   - 内部Idris関数呼び出しは記録されない
+   - → メソッドカバレッジには使える、関数カバレッジには不十分
 
-2. **Cスタブ問題**
+2. **Full Tracing が動作しない**
+   - `__toggle_tracing` は空のトレースを返す（2024年1月時点）
+   - 要調査
+
+3. **Cスタブ問題**
    - canister_entry.cがCスタブを提供する場合、Idris関数が呼ばれない
    - 解決: Cから`ensure_idris2_init()`を再実行してIdris main経由で呼び出す
 
-3. **Dead Code Elimination**
+4. **Dead Code Elimination**
    - `main`から到達不能な関数はWASMに含まれない
    - 解決: mainから全テスト対象関数を呼び出すようにする
