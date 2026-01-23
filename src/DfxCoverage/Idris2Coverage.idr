@@ -19,7 +19,7 @@ import System.File
 import DfxCoverage.IcWasm.IcpPublicNameParser
 import DfxCoverage.IcWasm.ProfilingParser
 import DfxCoverage.DumpcasesParser
-import DfxCoverage.Exclusions as Excl
+import DfxCoverage.Exclusions
 
 -- Re-export shared coverage result type
 import public Coverage.Core.Result
@@ -32,9 +32,9 @@ import public Coverage.Core.Result
 
 ||| Apply exclusion patterns to filter function names
 ||| Returns functions that are NOT excluded
-applyExclusions : List Excl.ExclPattern -> List String -> List String
+applyExclusions : List ExclPattern -> List String -> List String
 applyExclusions patterns funcs =
-  Prelude.Types.List.filter (\f => isNothing (Excl.isMethodExcluded patterns f)) funcs
+  Prelude.Types.List.filter (\f => isNothing (isMethodExcluded patterns f)) funcs
 
 -- =============================================================================
 -- Core Analysis Functions
@@ -47,7 +47,7 @@ applyExclusions patterns funcs =
 ||| @targetFuncs    List of target function names (from dumpcases or source map)
 ||| @exclusions     Patterns to exclude from target functions
 export
-analyzeIdris2Coverage : String -> String -> List String -> List Excl.ExclPattern ->
+analyzeIdris2Coverage : String -> String -> List String -> List ExclPattern ->
                         IO (Either String CoverageResult)
 analyzeIdris2Coverage wasmPath profilingData targetFuncs exclusions = do
   -- Step 1: Extract function name mapping from instrumented WASM
@@ -83,7 +83,7 @@ analyzeIdris2Coverage wasmPath profilingData targetFuncs exclusions = do
 ||| @targetFuncs   List of target function names
 ||| @exclusions    Patterns to exclude
 export
-analyzeCanisterCoverage : String -> String -> String -> List String -> List Excl.ExclPattern ->
+analyzeCanisterCoverage : String -> String -> String -> List String -> List ExclPattern ->
                           IO (Either String CoverageResult)
 analyzeCanisterCoverage wasmPath canisterId network targetFuncs exclusions = do
   -- Get profiling data from canister
@@ -105,7 +105,7 @@ analyzeCanisterCoverage wasmPath canisterId network targetFuncs exclusions = do
 ||| @dumpcasesPath  Path to dumpcases output file
 ||| @exclusions     Patterns to exclude (e.g., Prelude, PrimIO runtime functions)
 export
-getTargetFunctionsFromDumpcases : String -> List Excl.ExclPattern -> IO (Either String (List String))
+getTargetFunctionsFromDumpcases : String -> List ExclPattern -> IO (Either String (List String))
 getTargetFunctionsFromDumpcases dumpcasesPath exclusions = do
   Right content <- readFile dumpcasesPath
     | Left err => pure $ Left $ "Failed to read dumpcases: " ++ show err
@@ -120,7 +120,7 @@ getTargetFunctionsFromDumpcases dumpcasesPath exclusions = do
 ||| @ipkgName      Name of the .ipkg file (e.g., "mycanister.ipkg")
 ||| @exclusions    Patterns to exclude
 export
-runDumpcasesAndGetTargets : String -> String -> List Excl.ExclPattern ->
+runDumpcasesAndGetTargets : String -> String -> List ExclPattern ->
                             IO (Either String (List String))
 runDumpcasesAndGetTargets projectDir ipkgName exclusions = do
   Right result <- runAndParseDumpcases projectDir ipkgName
@@ -136,26 +136,26 @@ runDumpcasesAndGetTargets projectDir ipkgName exclusions = do
 ||| Default exclusion patterns for Idris2 coverage analysis
 ||| Excludes runtime/library functions that aren't typically test targets
 export
-defaultIdris2Exclusions : List Excl.ExclPattern
+defaultIdris2Exclusions : List ExclPattern
 defaultIdris2Exclusions =
-  [ Excl.prefixPattern "prim__" "Primitive operations"
-  , Excl.prefixPattern "Builtin." "Built-in functions"
-  , Excl.prefixPattern "Prelude.Basics." "Basic prelude (id, const, etc.)"
-  , Excl.prefixPattern "Prelude.Types." "Type machinery"
-  , Excl.containsPattern "ifThenElse" "Control flow primitives"
-  , Excl.containsPattern "believe_me" "Unsafe operations"
+  [ prefixPattern "prim__" "Primitive operations"
+  , prefixPattern "Builtin." "Built-in functions"
+  , prefixPattern "Prelude.Basics." "Basic prelude (id, const, etc.)"
+  , prefixPattern "Prelude.Types." "Type machinery"
+  , containsPattern "ifThenElse" "Control flow primitives"
+  , containsPattern "believe_me" "Unsafe operations"
   ]
 
 ||| Exclusions for Main module only analysis
 export
-mainModuleOnlyExclusions : List Excl.ExclPattern
+mainModuleOnlyExclusions : List ExclPattern
 mainModuleOnlyExclusions =
   defaultIdris2Exclusions ++
-  [ Excl.prefixPattern "PrimIO." "PrimIO runtime"
-  , Excl.prefixPattern "Prelude." "Prelude functions"
-  , Excl.prefixPattern "Data." "Data module"
-  , Excl.prefixPattern "Control." "Control module"
-  , Excl.prefixPattern "System." "System module"
+  [ prefixPattern "PrimIO." "PrimIO runtime"
+  , prefixPattern "Prelude." "Prelude functions"
+  , prefixPattern "Data." "Data module"
+  , prefixPattern "Control." "Control module"
+  , prefixPattern "System." "System module"
   ]
 
 -- =============================================================================

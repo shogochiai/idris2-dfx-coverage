@@ -82,7 +82,7 @@ main = do
       -- Show filtered High Impact Targets
       putStrLn ""
       putStrLn "=== FILTERED High Impact Targets (excluding libc/runtime) ==="
-      let filtered = getFilteredHighImpact 10 nameLookup defaultExclusions analysis.funcBranchCounts
+      let filtered = getFilteredHighImpact 10 nameLookup icpFullExclusions analysis.funcBranchCounts
       traverse_ showFiltered filtered
 
       -- If profiling data provided, show coverage priorities
@@ -100,7 +100,7 @@ main = do
           putStrLn $ "Executed functions: " ++ show (length executedIds)
 
           -- Filter then calculate coverage
-          let filteredTargets = filterByExclusions nameLookup defaultExclusions analysis.funcBranchCounts
+          let filteredTargets = filterByExclusions nameLookup icpFullExclusions analysis.funcBranchCounts
           let priorities = calculateCoveragePriorities executedIds filteredTargets
           let uncovered = filter (\p => not p.isCovered) priorities
           putStrLn ""
