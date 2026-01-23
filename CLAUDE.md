@@ -159,6 +159,22 @@ for idx, name in idris_funcs.items():
 ic-wasm instrument時に `--start-page 10 --page-limit 16` を指定。
 canister_initで `ic0_stable64_grow(26)` で事前確保（idris2-wasmが自動生成）。
 
+## Dependency Chain (このPJの依存関係)
+
+```
+idris2-dfx-coverage (このPJ)
+  └── idris2-wasm ← ic-wasm追跡義務はこちらが持つ
+        └── ic-wasm (Fork of dfinity/ic-wasm)
+              PR#104, PR#107 マージ待ち
+
+依存されている側:
+Lazy → LazyDfx → idris2-dfx-coverage
+```
+
+**監視責任の所在:**
+- ic-wasm の追跡は `idris2-wasm/lazy.toml` が担当（直接依存のため）
+- このPJは idris2-wasm に依存しているが、ic-wasm を直接使っていないため追跡義務なし
+
 ## Limitations
 
 1. **Entry Mode の制限**
